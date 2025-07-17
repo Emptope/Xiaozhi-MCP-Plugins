@@ -1,15 +1,29 @@
 """
-This script is used to connect to the MCP server and pipe the input and output to the websocket endpoint.
+MCP Pipe - WebSocket to MCP Server Bridge
 Version: 0.1.0
 
-Usage:
+This script connects a WebSocket endpoint to an MCP server script with automatic reconnection.
 
+Usage:
+------
+# Set environment variable
 export MCP_ENDPOINT=<mcp_endpoint>
+
+# Run MCP script from current directory
 python mcp_pipe.py <mcp_script>
 
-or
-
+# Run MCP script from specific directory
 python mcp_pipe.py <plugin_dir> <mcp_script>
+
+Examples:
+---------
+python mcp_pipe.py calculator.py
+python mcp_pipe.py ./calculator calculator.py
+python mcp_pipe.py weather/weather.py
+
+Environment Variables:
+---------------------
+MCP_ENDPOINT    WebSocket server URL (required)
 
 """
 

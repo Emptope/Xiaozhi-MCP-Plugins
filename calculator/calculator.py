@@ -1,4 +1,3 @@
-# server.py
 from mcp.server.fastmcp import FastMCP
 import sys
 from loguru import logger
