@@ -25,7 +25,7 @@ if sys.platform == 'win32':
 def get_default_search_engine() -> str:
     """Get the default search engine from environment variable or return 'google'"""
     default_engine = os.getenv('DEFAULT_SEARCH_ENGINE', 'google').lower()
-    supported_engines = ['duckduckgo', 'bing', 'google', 'baidu']
+    supported_engines = ['bing', 'google', 'baidu']
     
     if default_engine not in supported_engines:
         logger.warning(f"Unsupported default search engine '{default_engine}', falling back to 'google'")
@@ -47,7 +47,7 @@ def web_search(query: str, engine: str = None, max_results: int = 10, language: 
     
     Args:
         query: Search query string
-        engine: Search engine to use (duckduckgo, bing, google, baidu). If not specified, uses default engine (google)
+        engine: Search engine to use (bing, google, baidu). If not specified, uses default engine (google)
         max_results: Maximum number of results to return (1-20), default is 10
         language: Language preference (zh-cn, en-us, etc.), default is zh-cn
     
@@ -65,9 +65,7 @@ def web_search(query: str, engine: str = None, max_results: int = 10, language: 
     max_results = min(max(max_results, 1), 20)  # Limit between 1-20
     
     try:
-        if engine.lower() == "duckduckgo":
-            return _search_duckduckgo(query, max_results, language)
-        elif engine.lower() == "bing":
+        if engine.lower() == "bing":
             return _search_bing(query, max_results, language)
         elif engine.lower() == "google":
             return _search_google(query, max_results, language)
@@ -75,7 +73,7 @@ def web_search(query: str, engine: str = None, max_results: int = 10, language: 
             return _search_baidu(query, max_results, language)
         else:
             logger.error(f"Unsupported search engine: {engine}")
-            return {"success": False, "error": f"Unsupported search engine: {engine}. Supported engines: duckduckgo, bing, google, baidu"}
+            return {"success": False, "error": f"Unsupported search engine: {engine}. Supported engines: bing, google, baidu"}
     
     except Exception as e:
         error_msg = f"Search error: {str(e)}"
@@ -93,13 +91,13 @@ def get_search_config() -> dict:
     try:
         config = {
             "default_search_engine": DEFAULT_SEARCH_ENGINE,
-            "supported_engines": ["duckduckgo", "bing", "google", "baidu"],
+            "supported_engines": ["bing", "google", "baidu"],
             "api_keys_configured": {
                 "bing": bool(os.getenv('BING_SEARCH_API_KEY')),
                 "google": bool(os.getenv('GOOGLE_SEARCH_API_KEY') and os.getenv('GOOGLE_SEARCH_ENGINE_ID')),
                 "news": bool(os.getenv('NEWS_API_KEY'))
             },
-            "fallback_engine": "duckduckgo"
+            "fallback_engine": "baidu"
         }
         
         logger.info("Search configuration retrieved")
@@ -110,75 +108,13 @@ def get_search_config() -> dict:
         logger.error(error_msg)
         return {"success": False, "error": error_msg}
 
-def _search_duckduckgo(query: str, max_results: int, language: str) -> dict:
-    """Search using DuckDuckGo Instant Answer API"""
-    try:
-        # DuckDuckGo Instant Answer API
-        url = "https://api.duckduckgo.com/"
-        params = {
-            'q': query,
-            'format': 'json',
-            'no_html': '1',
-            'skip_disambig': '1'
-        }
-        
-        logger.info(f"Sending DuckDuckGo API request for: {query}")
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json()
-        
-        results = []
-        
-        # Add abstract if available
-        if data.get('Abstract'):
-            results.append({
-                "title": data.get('Heading', query),
-                "snippet": data.get('Abstract'),
-                "url": data.get('AbstractURL', ''),
-                "source": data.get('AbstractSource', 'DuckDuckGo')
-            })
-        
-        # Add related topics
-        for topic in data.get('RelatedTopics', [])[:max_results-len(results)]:
-            if isinstance(topic, dict) and topic.get('Text'):
-                results.append({
-                    "title": topic.get('Text', '').split(' - ')[0] if ' - ' in topic.get('Text', '') else topic.get('Text', ''),
-                    "snippet": topic.get('Text', ''),
-                    "url": topic.get('FirstURL', ''),
-                    "source": "DuckDuckGo"
-                })
-        
-        # Add definition if available
-        if data.get('Definition') and len(results) < max_results:
-            results.append({
-                "title": f"Definition: {query}",
-                "snippet": data.get('Definition'),
-                "url": data.get('DefinitionURL', ''),
-                "source": data.get('DefinitionSource', 'DuckDuckGo')
-            })
-        
-        logger.info(f"DuckDuckGo search completed: {len(results)} results for '{query}'")
-        
-        return {
-            "success": True,
-            "engine": "DuckDuckGo",
-            "query": query,
-            "total_results": len(results),
-            "results": results[:max_results]
-        }
-        
-    except Exception as e:
-        logger.error(f"DuckDuckGo search error: {str(e)}")
-        return {"success": False, "error": f"DuckDuckGo search failed: {str(e)}"}
-
 def _search_bing(query: str, max_results: int, language: str) -> dict:
     """Search using Bing Search API (requires API key)"""
     try:
         api_key = os.getenv('BING_SEARCH_API_KEY')
         if not api_key:
-            logger.warning("BING_SEARCH_API_KEY not set, falling back to DuckDuckGo")
-            return _search_duckduckgo(query, max_results, language)
+            logger.warning("BING_SEARCH_API_KEY not set, falling back to Baidu")
+            return _search_baidu(query, max_results, language)
         
         url = "https://api.bing.microsoft.com/v7.0/search"
         headers = {
@@ -219,7 +155,8 @@ def _search_bing(query: str, max_results: int, language: str) -> dict:
         
     except Exception as e:
         logger.error(f"Bing search error: {str(e)}")
-        return {"success": False, "error": f"Bing search failed: {str(e)}"}
+        logger.info("Falling back to Baidu due to Bing API error")
+        return _search_baidu(query, max_results, language)
 
 def _search_google(query: str, max_results: int, language: str) -> dict:
     """Search using Google Custom Search API (requires API key and search engine ID)"""
@@ -228,8 +165,8 @@ def _search_google(query: str, max_results: int, language: str) -> dict:
         search_engine_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID')
         
         if not api_key or not search_engine_id:
-            logger.warning("Google API credentials not set, falling back to DuckDuckGo")
-            return _search_duckduckgo(query, max_results, language)
+            logger.warning("Google API credentials not set, falling back to Baidu")
+            return _search_baidu(query, max_results, language)
         
         url = "https://www.googleapis.com/customsearch/v1"
         params = {
@@ -242,6 +179,17 @@ def _search_google(query: str, max_results: int, language: str) -> dict:
         
         logger.info(f"Sending Google API request for: {query}")
         response = requests.get(url, params=params, timeout=10)
+        
+        # Check for API key errors specifically
+        if response.status_code == 400:
+            try:
+                error_data = response.json()
+                if 'API key not valid' in error_data.get('error', {}).get('message', ''):
+                    logger.error("Google API key is invalid, falling back to Baidu")
+                    return _search_baidu(query, max_results, language)
+            except:
+                pass
+        
         response.raise_for_status()
         
         data = response.json()
@@ -267,15 +215,76 @@ def _search_google(query: str, max_results: int, language: str) -> dict:
         
     except Exception as e:
         logger.error(f"Google search error: {str(e)}")
-        return {"success": False, "error": f"Google search failed: {str(e)}"}
+        logger.info("Falling back to Baidu due to Google API error")
+        return _search_baidu(query, max_results, language)
 
 def _search_baidu(query: str, max_results: int, language: str) -> dict:
-    """Search using a simple web scraping approach for Baidu (for demonstration)"""
+    """Search using Baidu web scraping approach"""
     try:
-        # Note: This is a simplified implementation for demonstration
-        # In production, you should use official APIs when available
-        logger.warning("Baidu search using simplified method, falling back to DuckDuckGo")
-        return _search_duckduckgo(query, max_results, language)
+        # Use Baidu search with web scraping
+        search_url = "https://www.baidu.com/s"
+        
+        params = {
+            'wd': query,
+            'rn': max_results,
+            'ie': 'utf-8'
+        }
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        }
+        
+        logger.info(f"Sending Baidu search request for: {query}")
+        response = requests.get(search_url, params=params, headers=headers, timeout=15)
+        response.raise_for_status()
+        
+        # Parse HTML response to extract search results
+        import re
+        html_content = response.text
+        
+        results = []
+        
+        # Extract search results using regex patterns for Baidu
+        # Pattern for result titles and links
+        title_pattern = r'<h3[^>]*class="[^"]*t[^"]*"[^>]*><a[^>]*href="([^"]*)"[^>]*>([^<]*)</a></h3>'
+        snippet_pattern = r'<span[^>]*class="[^"]*content-right_8Zs40[^"]*"[^>]*>([^<]*)</span>'
+        
+        # Find all result links and titles
+        title_matches = re.findall(title_pattern, html_content)
+        
+        # Extract snippets (descriptions)
+        snippet_matches = re.findall(snippet_pattern, html_content)
+        
+        # Combine results
+        for i, (url, title) in enumerate(title_matches[:max_results]):
+            snippet = snippet_matches[i] if i < len(snippet_matches) else ""
+            
+            # Clean up the data
+            title = re.sub(r'<[^>]+>', '', title).strip()
+            snippet = re.sub(r'<[^>]+>', '', snippet).strip()
+            url = url.strip()
+            
+            if title and url:
+                results.append({
+                    "title": title,
+                    "snippet": snippet,
+                    "url": url,
+                    "source": "Baidu"
+                })
+        
+        logger.info(f"Baidu search completed: {len(results)} results for '{query}'")
+        
+        return {
+            "success": True,
+            "engine": "Baidu",
+            "query": query,
+            "total_results": len(results),
+            "results": results
+        }
         
     except Exception as e:
         logger.error(f"Baidu search error: {str(e)}")
