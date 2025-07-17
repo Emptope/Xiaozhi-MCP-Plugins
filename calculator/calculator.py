@@ -4,7 +4,7 @@ from loguru import logger
 import math
 import random
 
-# Configure loguru logger
+# Configure loguru logger to output to stderr
 logger.remove()  # Remove default handler
 logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | Calculator | {message}", level="INFO")
 
@@ -16,14 +16,25 @@ if sys.platform == 'win32':
 # Create an MCP server
 mcp = FastMCP("Calculator")
 
-# Add an addition tool
+# Add calculator tool
 @mcp.tool()
 def calculator(python_expression: str) -> dict:
     """For mathematical calculation, always use this tool to calculate the result of a python expression. You can use 'math' or 'random' directly, without 'import'."""
-    result = eval(python_expression, {"math": math, "random": random})
-    logger.info(f"Calculating formula: {python_expression}, result: {result}")
-    return {"success": True, "result": result}
+    try:
+        result = eval(python_expression, {"math": math, "random": random})
+        
+        # Only log the calculation result
+        logger.info(f"Calculated: {python_expression} = {result}")
+        
+        return {"success": True, "result": result, "expression": python_expression}
+        
+    except Exception as e:
+        error_msg = f"Calculation error: {str(e)}"
+        logger.error(f"Error in '{python_expression}': {error_msg}")
+        
+        return {"success": False, "error": error_msg, "expression": python_expression}
 
 # Start the server
 if __name__ == "__main__":
+    logger.info("Calculator MCP Server starting...")
     mcp.run(transport="stdio")

@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure loguru logger
+# Configure loguru logger to output to stderr (same as calculator.py)
 logger.remove()  # Remove default handler
 logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | Weather | {message}", level="INFO")
 
@@ -32,10 +32,13 @@ def get_weather(city: str, extensions: str = "base") -> dict:
     Returns:
         Dictionary containing weather information
     """
+    logger.info(f"Weather query started: {city} (type: {extensions})")
+    
     try:
         # Get Amap API Key from environment variables
         api_key = os.getenv('AMAP_API_KEY')
         if not api_key:
+            logger.error("AMAP_API_KEY environment variable not set")
             return {"success": False, "error": "Please set AMAP_API_KEY environment variable"}
         
         # Amap weather query API URL
@@ -47,12 +50,12 @@ def get_weather(city: str, extensions: str = "base") -> dict:
             'extensions': extensions
         }
         
-        logger.info(f"Querying weather: city={city}, type={extensions}")
-        
+        logger.info(f"Sending API request for: {city}")
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         
         data = response.json()
+        logger.info(f"API response received for: {city}")
         
         if data.get('status') == '1':
             if extensions == 'base':
@@ -71,7 +74,9 @@ def get_weather(city: str, extensions: str = "base") -> dict:
                         "humidity": weather_info.get('humidity') + "%",
                         "report_time": weather_info.get('reporttime')
                     }
+                    logger.info(f"Weather result: {city} - {weather_info.get('weather')} {weather_info.get('temperature')}°C")
                 else:
+                    logger.warning(f"No weather data found for: {city}")
                     result = {"success": False, "error": "Weather data not found"}
             else:
                 # Forecast weather
@@ -101,21 +106,25 @@ def get_weather(city: str, extensions: str = "base") -> dict:
                         "city": forecast_info.get('city'),
                         "forecasts": forecast_list
                     }
+                    logger.info(f"Forecast result: {city} - {len(forecast_list)} days forecast")
                 else:
+                    logger.warning(f"No forecast data found for: {city}")
                     result = {"success": False, "error": "Forecast data not found"}
         else:
-            result = {"success": False, "error": f"API error: {data.get('info', 'Unknown error')}"}
+            error_info = data.get('info', 'Unknown error')
+            logger.error(f"API error for {city}: {error_info}")
+            result = {"success": False, "error": f"API error: {error_info}"}
         
-        logger.info(f"Weather query result: {result}")
+        logger.info(f"Weather query completed for: {city}")
         return result
         
     except requests.exceptions.RequestException as e:
         error_msg = f"Network request error: {str(e)}"
-        logger.error(error_msg)
+        logger.error(f"Network error for {city}: {error_msg}")
         return {"success": False, "error": error_msg}
     except Exception as e:
         error_msg = f"Error occurred while querying weather: {str(e)}"
-        logger.error(error_msg)
+        logger.error(f"Unexpected error for {city}: {error_msg}")
         return {"success": False, "error": error_msg}
 
 @mcp.tool()
@@ -129,9 +138,12 @@ def get_city_adcode(city_name: str) -> dict:
     Returns:
         Dictionary containing city adcode information
     """
+    logger.info(f"Adcode query started: {city_name}")
+    
     try:
         api_key = os.getenv('AMAP_API_KEY')
         if not api_key:
+            logger.error("AMAP_API_KEY environment variable not set")
             return {"success": False, "error": "Please set AMAP_API_KEY environment variable"}
         
         # Amap geocoding API
@@ -142,12 +154,12 @@ def get_city_adcode(city_name: str) -> dict:
             'address': city_name
         }
         
-        logger.info(f"Querying city adcode: {city_name}")
-        
+        logger.info(f"Sending geocoding request for: {city_name}")
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
         
         data = response.json()
+        logger.info(f"Geocoding response received for: {city_name}")
         
         if data.get('status') == '1' and data.get('geocodes'):
             geocode = data['geocodes'][0]
@@ -158,17 +170,20 @@ def get_city_adcode(city_name: str) -> dict:
                 "location": geocode.get('location'),
                 "level": geocode.get('level')
             }
+            logger.info(f"Adcode result: {city_name} -> {geocode.get('adcode')}")
         else:
+            logger.warning(f"City not found: {city_name}")
             result = {"success": False, "error": f"City not found: {city_name}"}
         
-        logger.info(f"City adcode query result: {result}")
+        logger.info(f"Adcode query completed for: {city_name}")
         return result
         
     except Exception as e:
         error_msg = f"Error occurred while querying city adcode: {str(e)}"
-        logger.error(error_msg)
+        logger.error(f"Error querying adcode for {city_name}: {error_msg}")
         return {"success": False, "error": error_msg}
 
 # Start the server
 if __name__ == "__main__":
+    logger.info("Weather MCP Server starting...")
     mcp.run(transport="stdio")

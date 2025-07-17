@@ -27,7 +27,7 @@ load_dotenv()
 
 # Configure loguru logger
 logger.remove()  # Remove default handler
-logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name} | {message}", level="INFO")
+logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | Manager | {message}", level="INFO")
 
 class MCPManager:
     """MCP Plugin Manager"""
@@ -79,7 +79,7 @@ class MCPManager:
                                     main_file = py_file
                                     break
                         except Exception as e:
-                            logger.warning(f"Error reading file {py_file}: {e}")
+                            logger.warning(f"Error reading {py_file}: {e}")
                 
                 if main_file:
                     # Determine plugin name (remove mcp- prefix if present)
@@ -95,7 +95,7 @@ class MCPManager:
                     }
         
         self.plugin_configs = plugins
-        logger.info(f"Discovered {len(plugins)} MCP plugins: {list(plugins.keys())}")
+        logger.info(f"Found {len(plugins)} plugins: {list(plugins.keys())}")
     
     def _find_pipe_script(self) -> Optional[str]:
         """Find pipe script in root directory"""
@@ -106,34 +106,29 @@ class MCPManager:
     
     def list_plugins(self) -> None:
         """List all available plugins"""
-        logger.info("\n=== Available MCP Plugins ===")
+        logger.info("=== Available Plugins ===")
         if not self.plugin_configs:
-            logger.info("No MCP plugins found")
+            logger.info("No plugins found")
             return
         
         for name, config in self.plugin_configs.items():
-            logger.info(f"\nPlugin: {name}")
-            logger.info(f"   Directory: {config['dir']}")
-            logger.info(f"   Main file: {config['main_file']}")
-            logger.info(f"   Pipe script: {config['pipe_script'] or 'Not found'}")
-            logger.info(f"   Requirements: {config['requirements'] or 'None'}")
+            logger.info(f"{name}: {config['main_file']}")
     
     def install_dependencies(self) -> bool:
         """Install dependencies from root requirements.txt"""
         requirements_file = self.workspace_dir / 'requirements.txt'
         
         if not requirements_file.exists():
-            logger.info("No requirements.txt found, skipping dependency installation")
             return True
         
         try:
-            logger.info("Installing dependencies from requirements.txt...")
+            logger.info("Installing dependencies...")
             result = subprocess.run([
                 sys.executable, '-m', 'pip', 'install', '-r', str(requirements_file)
             ], capture_output=True, text=True, cwd=str(self.workspace_dir))
             
             if result.returncode == 0:
-                logger.info("Dependencies installed successfully")
+                logger.info("Dependencies installed")
                 return True
             else:
                 logger.error(f"Failed to install dependencies: {result.stderr}")
@@ -145,11 +140,11 @@ class MCPManager:
     def start_plugin(self, plugin_name: str) -> bool:
         """Start specified plugin"""
         if plugin_name not in self.plugin_configs:
-            logger.error(f"Plugin {plugin_name} does not exist")
+            logger.error(f"Plugin {plugin_name} not found")
             return False
         
         if plugin_name in self.processes:
-            logger.warning(f"Plugin {plugin_name} is already running")
+            logger.warning(f"Plugin {plugin_name} already running")
             return True
         
         config = self.plugin_configs[plugin_name]
@@ -168,35 +163,32 @@ class MCPManager:
             # Check if pipe script exists
             pipe_script = config.get('pipe_script')
             if not pipe_script:
-                logger.error(f"Plugin {plugin_name} is missing pipe script")
+                logger.error(f"Plugin {plugin_name} missing pipe script")
                 return False
             
             # Start plugin process with output directly to terminal
             cmd = [sys.executable, pipe_script, config['dir'], os.path.basename(config['main_file'])]
-            logger.info(f"Starting plugin {plugin_name}: {' '.join(cmd)}")
+            logger.info(f"Starting {plugin_name}...")
             
             # Don't capture stdout/stderr, let them go directly to terminal
             process = subprocess.Popen(
                 cmd,
-                # Remove stdout and stderr capture to allow direct terminal output
-                # stdout=subprocess.PIPE,
-                # stderr=subprocess.PIPE,
                 text=True,
                 env=os.environ.copy()  # Ensure environment variables are passed
             )
             
             self.processes[plugin_name] = process
-            logger.info(f"Plugin {plugin_name} started successfully (PID: {process.pid})")
+            logger.info(f"{plugin_name} started (PID: {process.pid})")
             return True
             
         except Exception as e:
-            logger.error(f"Error starting plugin {plugin_name}: {e}")
+            logger.error(f"Error starting {plugin_name}: {e}")
             return False
     
     def stop_plugin(self, plugin_name: str) -> bool:
         """Stop specified plugin"""
         if plugin_name not in self.processes:
-            logger.warning(f"Plugin {plugin_name} is not running")
+            logger.warning(f"Plugin {plugin_name} not running")
             return True
         
         try:
@@ -206,9 +198,9 @@ class MCPManager:
             # Wait for process to end
             try:
                 process.wait(timeout=5)
-                logger.info(f"Plugin {plugin_name} stopped successfully")
+                logger.info(f"{plugin_name} stopped")
             except subprocess.TimeoutExpired:
-                logger.warning(f"Plugin {plugin_name} did not stop gracefully, forcing termination")
+                logger.warning(f"Force killing {plugin_name}")
                 process.kill()
                 process.wait()
             
@@ -216,13 +208,13 @@ class MCPManager:
             return True
             
         except Exception as e:
-            logger.error(f"Error stopping plugin {plugin_name}: {e}")
+            logger.error(f"Error stopping {plugin_name}: {e}")
             return False
     
     def start_all_plugins(self) -> None:
         """Start all available plugins"""
         if not self.plugin_configs:
-            logger.warning("No plugins found to start")
+            logger.warning("No plugins to start")
             return
         
         logger.info(f"Starting {len(self.plugin_configs)} plugins...")
@@ -233,11 +225,11 @@ class MCPManager:
                 success_count += 1
                 time.sleep(1)  # Brief delay between starts
         
-        logger.info(f"Successfully started {success_count}/{len(self.plugin_configs)} plugins")
+        logger.info(f"Started {success_count}/{len(self.plugin_configs)} plugins")
         
         # Keep the manager running to show plugin output
         if success_count > 0:
-            logger.info("Plugins are running. Press Ctrl+C to stop all plugins.")
+            logger.info("Press Ctrl+C to stop all plugins")
             try:
                 # Wait for interrupt signal
                 while True:
@@ -250,12 +242,12 @@ class MCPManager:
                     
                     # Clean up dead processes
                     for name in dead_processes:
-                        logger.warning(f"Plugin {name} has stopped unexpectedly")
+                        logger.warning(f"{name} stopped unexpectedly")
                         del self.processes[name]
                     
                     # If all processes are dead, exit
                     if not self.processes:
-                        logger.info("All plugins have stopped")
+                        logger.info("All plugins stopped")
                         break
                         
             except KeyboardInterrupt:
@@ -264,10 +256,10 @@ class MCPManager:
     def stop_all_plugins(self) -> None:
         """Stop all running plugins"""
         if not self.processes:
-            logger.info("No plugins are currently running")
+            logger.info("No plugins running")
             return
         
-        logger.info(f"Stopping {len(self.processes)} running plugins...")
+        logger.info(f"Stopping {len(self.processes)} plugins...")
         
         # Create a copy of the keys to avoid modification during iteration
         plugin_names = list(self.processes.keys())
@@ -284,7 +276,7 @@ class MCPManager:
                 if process.poll() is None:
                     status[plugin_name] = f"Running (PID: {process.pid})"
                 else:
-                    status[plugin_name] = f"Stopped (Exit code: {process.returncode})"
+                    status[plugin_name] = f"Stopped (Exit: {process.returncode})"
                     # Clean up stopped process
                     del self.processes[plugin_name]
             else:
@@ -296,13 +288,13 @@ class MCPManager:
         """Display status of all plugins"""
         status = self.get_plugin_status()
         
-        logger.info("\n=== Plugin Status ===")
+        logger.info("=== Plugin Status ===")
         for plugin_name, plugin_status in status.items():
             logger.info(f"{plugin_name}: {plugin_status}")
     
     def _signal_handler(self, sig, frame):
         """Handle interrupt signals"""
-        logger.info(f"\nReceived signal {sig}, stopping all plugins...")
+        logger.info("Stopping all plugins...")
         self.stop_all_plugins()
         sys.exit(0)
 
@@ -328,7 +320,7 @@ def main():
             manager.start_all_plugins()
         elif args.plugin:
             if manager.start_plugin(args.plugin):
-                logger.info(f"Plugin {args.plugin} is running. Press Ctrl+C to stop.")
+                logger.info(f"{args.plugin} running. Press Ctrl+C to stop.")
                 try:
                     while True:
                         time.sleep(1)
@@ -336,7 +328,7 @@ def main():
                         if args.plugin in manager.processes:
                             process = manager.processes[args.plugin]
                             if process.poll() is not None:
-                                logger.warning(f"Plugin {args.plugin} has stopped unexpectedly")
+                                logger.warning(f"{args.plugin} stopped unexpectedly")
                                 break
                         else:
                             break
@@ -352,7 +344,7 @@ def main():
             manager.stop_all_plugins()
             
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
+        logger.info("Interrupted")
     except Exception as e:
         logger.error(f"Error: {e}")
         sys.exit(1)
