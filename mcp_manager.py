@@ -6,10 +6,13 @@ Script for managing and launching MCP plugins, supports starting all plugins or 
 
 Usage:
     python mcp_manager.py --all                           # Start all plugins
-    python mcp_manager.py --all --exclude plugin1 plugin2 # Start all plugins except plugin1 and plugin2
     python mcp_manager.py --exclude plugin1 plugin2       # Start all plugins except plugin1 and plugin2
-    python mcp_manager.py --plugin calculator             # Start specific plugin
+    python mcp_manager.py --plugin plugin1                # Start specific plugin
+    python mcp_manager.py --folder Calculator             # Start all plugins in Calculator folder
     python mcp_manager.py --list                          # List all available plugins
+    python mcp_manager.py --status                        # Show plugin status
+    python mcp_manager.py --stop plugin1                  # Stop specific plugin
+    python mcp_manager.py --stop-all                      # Stop all plugins
     python mcp_manager.py --help                          # Show help information
 """
 
@@ -52,60 +55,33 @@ class MCPManager:
         
         # Scan all directories in workspace
         for item in self.workspace_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('.'):
-                # Check if directory contains MCP-related files
-                plugin_dir = item
-                mcp_files = []
+            if not item.is_dir() or item.name.startswith('.'):
+                continue
                 
-                # Look for common MCP script patterns
-                possible_files = [
-                    f"{item.name.replace('mcp-', '')}.py",  # e.g., mcp-calculator -> calculator.py
-                    f"{item.name}.py",  # e.g., weather -> weather.py
-                    "main.py",
-                    "server.py"
-                ]
-                
-                # First, try to find files with expected names
-                for filename in possible_files:
-                    file_path = plugin_dir / filename
-                    if file_path.exists():
-                        mcp_files.append(file_path)
-                
-                # If no specific file found, scan all .py files for MCP indicators
-                if not mcp_files:
-                    for py_file in plugin_dir.glob("*.py"):
-                        try:
-                            with open(py_file, 'r', encoding='utf-8') as f:
-                                content = f.read()
-                                if 'FastMCP' in content or 'mcp.tool' in content:
-                                    mcp_files.append(py_file)
-                        except Exception as e:
-                            logger.warning(f"Error reading {py_file}: {e}")
-                
-                # Register each MCP file as a separate plugin
-                for main_file in mcp_files:
-                    # Determine plugin name
-                    base_name = main_file.stem  # filename without extension
-                    if item.name.lower() == base_name.lower():
-                        # If directory name matches file name, use directory name
-                        plugin_name = item.name
-                    else:
-                        # Use format: directory_filename
-                        plugin_name = f"{item.name}_{base_name}"
+            # Scan all .py files in the directory for MCP indicators
+            for py_file in item.glob("*.py"):
+                try:
+                    with open(py_file, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                        if 'FastMCP' not in content and 'mcp.tool' not in content:
+                            continue
                     
-                    # Remove mcp- prefix if present
-                    if plugin_name.startswith('mcp-'):
-                        plugin_name = plugin_name[4:]
+                    # Generate plugin name: always use format "folder-filename"
+                    folder_name = item.name.replace('mcp-', '') if item.name.startswith('mcp-') else item.name
+                    plugin_name = f"{folder_name}-{py_file.stem}"
                     
                     plugins[plugin_name] = {
-                        'dir': str(plugin_dir),
-                        'main_file': str(main_file),
+                        'dir': str(item),
+                        'main_file': str(py_file),
                         'pipe_script': self._find_pipe_script(),
                         'requirements': str(self.workspace_dir / 'requirements.txt') if (self.workspace_dir / 'requirements.txt').exists() else None
                     }
+                    
+                except Exception as e:
+                    logger.warning(f"Error reading {py_file}: {e}")
         
         self.plugin_configs = plugins
-        logger.info(f"Found {len(plugins)} plugins: {list(plugins.keys())}")
+        logger.info(f"Found {len(plugins)} plugins: {', '.join(plugins.keys())}")
 
     def list_plugins(self) -> None:
         """List all available plugins with detailed information"""
@@ -286,6 +262,56 @@ class MCPManager:
             except KeyboardInterrupt:
                 pass  # Will be handled by signal handler
     
+    def start_folder_plugins(self, folder_name: str) -> None:
+        """Start all plugins in specified folder"""
+        if not self.plugin_configs:
+            logger.warning("No plugins to start")
+            return
+        
+        # Find plugins in the specified folder
+        folder_plugins = [name for name, config in self.plugin_configs.items() 
+                         if Path(config['dir']).name == folder_name]
+        
+        if not folder_plugins:
+            logger.warning(f"No plugins found in folder '{folder_name}'")
+            return
+        
+        logger.info(f"Starting {len(folder_plugins)} plugins from folder '{folder_name}'...")
+        
+        success_count = 0
+        for plugin_name in folder_plugins:
+            if self.start_plugin(plugin_name):
+                success_count += 1
+                time.sleep(1)  # Brief delay between starts
+        
+        logger.info(f"Started {success_count}/{len(folder_plugins)} plugins from '{folder_name}'")
+        
+        # Keep the manager running to show plugin output
+        if success_count > 0:
+            logger.info("Press Ctrl+C to stop all plugins")
+            try:
+                # Wait for interrupt signal
+                while True:
+                    time.sleep(1)
+                    # Check if any processes have died
+                    dead_processes = []
+                    for name, process in self.processes.items():
+                        if process.poll() is not None:
+                            dead_processes.append(name)
+                    
+                    # Clean up dead processes
+                    for name in dead_processes:
+                        logger.warning(f"{name} stopped unexpectedly")
+                        del self.processes[name]
+                    
+                    # If all processes are dead, exit
+                    if not self.processes:
+                        logger.info("All plugins stopped")
+                        break
+                        
+            except KeyboardInterrupt:
+                pass  # Will be handled by signal handler
+    
     def stop_all_plugins(self) -> None:
         """Stop all running plugins"""
         if not self.processes:
@@ -338,22 +364,21 @@ def main():
     
     group.add_argument('--all', action='store_true', help='Start all plugins')
     group.add_argument('--plugin', type=str, help='Start specific plugin')
+    group.add_argument('--folder', type=str, help='Start all plugins in specific folder')
     group.add_argument('--list', action='store_true', help='List all available plugins')
     group.add_argument('--status', action='store_true', help='Show plugin status')
     group.add_argument('--stop', type=str, help='Stop specific plugin')
     group.add_argument('--stop-all', action='store_true', help='Stop all plugins')
-    
-    # Add exclude option that can work standalone or with --all
-    parser.add_argument('--exclude', type=str, nargs='+', help='Exclude specific plugins when starting all (space-separated list)')
+    group.add_argument('--exclude', type=str, nargs='+', help='Exclude specific plugins when starting all (space-separated list)')
     
     args = parser.parse_args()
     
     # If no main action is specified but exclude is provided, default to starting all with exclusions
-    if not any([args.all, args.plugin, args.list, args.status, args.stop, args.stop_all]) and args.exclude:
+    if not any([args.all, args.plugin, args.folder, args.list, args.status, args.stop, args.stop_all]) and args.exclude:
         args.all = True
     
     # Ensure at least one action is specified
-    if not any([args.all, args.plugin, args.list, args.status, args.stop, args.stop_all]):
+    if not any([args.all, args.plugin, args.folder, args.list, args.status, args.stop, args.stop_all]):
         parser.error("At least one action must be specified")
     
     # Create manager instance
@@ -370,6 +395,8 @@ def main():
                     exclude_list = [p for p in exclude_list if p in manager.plugin_configs]
             
             manager.start_all_plugins(exclude_list)
+        elif args.folder:
+            manager.start_folder_plugins(args.folder)
         elif args.plugin:
             if manager.start_plugin(args.plugin):
                 logger.info(f"{args.plugin} running. Press Ctrl+C to stop.")
