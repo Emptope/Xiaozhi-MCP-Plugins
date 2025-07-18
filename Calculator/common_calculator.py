@@ -6,7 +6,7 @@ import random
 
 # Configure loguru logger to output to stderr
 logger.remove()  # Remove default handler
-logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | Calculator | {message}", level="INFO")
+logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | CommonCalculator | {message}", level="INFO")
 
 # Fix UTF-8 encoding for Windows console
 if sys.platform == 'win32':
@@ -14,11 +14,11 @@ if sys.platform == 'win32':
     sys.stdout.reconfigure(encoding='utf-8')
 
 # Create an MCP server
-mcp = FastMCP("Calculator")
+mcp = FastMCP("CommonCalculator")
 
 # Add calculator tool
 @mcp.tool()
-def calculator(python_expression: str) -> dict:
+def common_calculate(python_expression: str) -> dict:
     """For mathematical calculation, always use this tool to calculate the result of a python expression. You can use 'math' or 'random' directly, without 'import'."""
     try:
         result = eval(python_expression, {"math": math, "random": random})
@@ -36,5 +36,5 @@ def calculator(python_expression: str) -> dict:
 
 # Start the server
 if __name__ == "__main__":
-    logger.info("Calculator MCP Server starting...")
+    logger.info("Common Calculator MCP Server starting...")
     mcp.run(transport="stdio")

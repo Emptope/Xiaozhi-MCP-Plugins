@@ -7,7 +7,7 @@ from sympy.printing import pretty, pprint
 
 # Configure loguru logger to output to stderr
 logger.remove()  # Remove default handler
-logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | SymbolicCalc | {message}", level="INFO")
+logger.add(sys.stderr, format="{time:YYYY-MM-DD HH:mm:ss} | {level} | SymbolicCalculator | {message}", level="INFO")
 
 # Fix UTF-8 encoding for Windows console
 if sys.platform == 'win32':
