@@ -5,10 +5,12 @@ MCP Plugin Manager
 Script for managing and launching MCP plugins, supports starting all plugins or specific plugins.
 
 Usage:
-    python mcp_manager.py --all                    # Start all plugins
-    python mcp_manager.py --plugin calculator      # Start specific plugin
-    python mcp_manager.py --list                   # List all available plugins
-    python mcp_manager.py --help                   # Show help information
+    python mcp_manager.py --all                           # Start all plugins
+    python mcp_manager.py --all --exclude plugin1 plugin2 # Start all plugins except plugin1 and plugin2
+    python mcp_manager.py --exclude plugin1 plugin2       # Start all plugins except plugin1 and plugin2
+    python mcp_manager.py --plugin calculator             # Start specific plugin
+    python mcp_manager.py --list                          # List all available plugins
+    python mcp_manager.py --help                          # Show help information
 """
 
 import os
@@ -124,7 +126,7 @@ class MCPManager:
             logger.info(f"\n{dir_name}/")
             for plugin_name, config in plugins:
                 main_file = Path(config['main_file']).name
-                logger.info(f"{plugin_name}: {main_file}")
+                logger.info(f"  {plugin_name}: {main_file}")
         
         logger.info(f"\nTotal: {len(self.plugin_configs)} plugins available")
     
@@ -134,16 +136,6 @@ class MCPManager:
         if root_pipe.exists():
             return str(root_pipe)
         return None
-    
-    def list_plugins(self) -> None:
-        """List all available plugins"""
-        logger.info("=== Available Plugins ===")
-        if not self.plugin_configs:
-            logger.info("No plugins found")
-            return
-        
-        for name, config in self.plugin_configs.items():
-            logger.info(f"{name}: {config['main_file']}")
     
     def install_dependencies(self) -> bool:
         """Install dependencies from root requirements.txt"""
@@ -242,21 +234,31 @@ class MCPManager:
             logger.error(f"Error stopping {plugin_name}: {e}")
             return False
     
-    def start_all_plugins(self) -> None:
-        """Start all available plugins"""
+    def start_all_plugins(self, exclude_plugins: List[str] = None) -> None:
+        """Start all available plugins except excluded ones"""
         if not self.plugin_configs:
             logger.warning("No plugins to start")
             return
         
-        logger.info(f"Starting {len(self.plugin_configs)} plugins...")
+        exclude_plugins = exclude_plugins or []
+        available_plugins = [name for name in self.plugin_configs.keys() if name not in exclude_plugins]
+        
+        if not available_plugins:
+            logger.warning("No plugins to start after exclusions")
+            return
+        
+        if exclude_plugins:
+            logger.info(f"Excluding plugins: {', '.join(exclude_plugins)}")
+        
+        logger.info(f"Starting {len(available_plugins)} plugins...")
         
         success_count = 0
-        for plugin_name in self.plugin_configs:
+        for plugin_name in available_plugins:
             if self.start_plugin(plugin_name):
                 success_count += 1
                 time.sleep(1)  # Brief delay between starts
         
-        logger.info(f"Started {success_count}/{len(self.plugin_configs)} plugins")
+        logger.info(f"Started {success_count}/{len(available_plugins)} plugins")
         
         # Keep the manager running to show plugin output
         if success_count > 0:
@@ -332,7 +334,7 @@ class MCPManager:
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='MCP Plugin Manager')
-    group = parser.add_mutually_exclusive_group(required=True)
+    group = parser.add_mutually_exclusive_group(required=False)
     
     group.add_argument('--all', action='store_true', help='Start all plugins')
     group.add_argument('--plugin', type=str, help='Start specific plugin')
@@ -341,14 +343,33 @@ def main():
     group.add_argument('--stop', type=str, help='Stop specific plugin')
     group.add_argument('--stop-all', action='store_true', help='Stop all plugins')
     
+    # Add exclude option that can work standalone or with --all
+    parser.add_argument('--exclude', type=str, nargs='+', help='Exclude specific plugins when starting all (space-separated list)')
+    
     args = parser.parse_args()
+    
+    # If no main action is specified but exclude is provided, default to starting all with exclusions
+    if not any([args.all, args.plugin, args.list, args.status, args.stop, args.stop_all]) and args.exclude:
+        args.all = True
+    
+    # Ensure at least one action is specified
+    if not any([args.all, args.plugin, args.list, args.status, args.stop, args.stop_all]):
+        parser.error("At least one action must be specified")
     
     # Create manager instance
     manager = MCPManager()
     
     try:
         if args.all:
-            manager.start_all_plugins()
+            exclude_list = args.exclude if args.exclude else []
+            # Validate excluded plugins exist
+            if exclude_list:
+                invalid_plugins = [p for p in exclude_list if p not in manager.plugin_configs]
+                if invalid_plugins:
+                    logger.warning(f"Unknown plugins in exclude list: {', '.join(invalid_plugins)}")
+                    exclude_list = [p for p in exclude_list if p in manager.plugin_configs]
+            
+            manager.start_all_plugins(exclude_list)
         elif args.plugin:
             if manager.start_plugin(args.plugin):
                 logger.info(f"{args.plugin} running. Press Ctrl+C to stop.")
