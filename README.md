@@ -7,7 +7,11 @@ xiaozhi-mcp-plugins 是为 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 
 1. **设置环境变量**
 
    ```bash
-   set MCP_ENDPOINT=ws://your-websocket-server:port
+   # windows
+   set mcp_endpoint=<your_websocket_endpoint>
+
+   # linux/mac
+   export mcp_endpoint=<your_websocket_endpoint>
    ```
 
 2. **安装依赖**
