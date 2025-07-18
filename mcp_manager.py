@@ -53,7 +53,7 @@ class MCPManager:
             if item.is_dir() and not item.name.startswith('.'):
                 # Check if directory contains MCP-related files
                 plugin_dir = item
-                main_file = None
+                mcp_files = []
                 
                 # Look for common MCP script patterns
                 possible_files = [
@@ -63,29 +63,37 @@ class MCPManager:
                     "server.py"
                 ]
                 
+                # First, try to find files with expected names
                 for filename in possible_files:
                     file_path = plugin_dir / filename
                     if file_path.exists():
-                        main_file = file_path
-                        break
+                        mcp_files.append(file_path)
                 
                 # If no specific file found, scan all .py files for MCP indicators
-                if not main_file:
+                if not mcp_files:
                     for py_file in plugin_dir.glob("*.py"):
                         try:
                             with open(py_file, 'r', encoding='utf-8') as f:
                                 content = f.read()
                                 if 'FastMCP' in content or 'mcp.tool' in content:
-                                    main_file = py_file
-                                    break
+                                    mcp_files.append(py_file)
                         except Exception as e:
                             logger.warning(f"Error reading {py_file}: {e}")
                 
-                if main_file:
-                    # Determine plugin name (remove mcp- prefix if present)
-                    plugin_name = item.name
+                # Register each MCP file as a separate plugin
+                for main_file in mcp_files:
+                    # Determine plugin name
+                    base_name = main_file.stem  # filename without extension
+                    if item.name.lower() == base_name.lower():
+                        # If directory name matches file name, use directory name
+                        plugin_name = item.name
+                    else:
+                        # Use format: directory_filename
+                        plugin_name = f"{item.name}_{base_name}"
+                    
+                    # Remove mcp- prefix if present
                     if plugin_name.startswith('mcp-'):
-                        plugin_name = plugin_name[4:]  # Remove 'mcp-' prefix
+                        plugin_name = plugin_name[4:]
                     
                     plugins[plugin_name] = {
                         'dir': str(plugin_dir),
@@ -96,6 +104,29 @@ class MCPManager:
         
         self.plugin_configs = plugins
         logger.info(f"Found {len(plugins)} plugins: {list(plugins.keys())}")
+
+    def list_plugins(self) -> None:
+        """List all available plugins with detailed information"""
+        logger.info("=== Available Plugins ===")
+        if not self.plugin_configs:
+            logger.info("No plugins found")
+            return
+        
+        # Group plugins by directory for better display
+        plugins_by_dir = {}
+        for name, config in self.plugin_configs.items():
+            dir_name = Path(config['dir']).name
+            if dir_name not in plugins_by_dir:
+                plugins_by_dir[dir_name] = []
+            plugins_by_dir[dir_name].append((name, config))
+        
+        for dir_name, plugins in plugins_by_dir.items():
+            logger.info(f"\n{dir_name}/")
+            for plugin_name, config in plugins:
+                main_file = Path(config['main_file']).name
+                logger.info(f"{plugin_name}: {main_file}")
+        
+        logger.info(f"\nTotal: {len(self.plugin_configs)} plugins available")
     
     def _find_pipe_script(self) -> Optional[str]:
         """Find pipe script in root directory"""
