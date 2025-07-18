@@ -1,6 +1,6 @@
 """
 MCP Pipe - WebSocket to MCP Server Bridge
-Version: 0.1.0
+Version: 0.2.0
 
 This script connects a WebSocket endpoint to an MCP server script with automatic reconnection.
 
@@ -15,12 +15,6 @@ python mcp_pipe.py <mcp_script>
 
 # Run MCP script from specific directory
 python mcp_pipe.py <plugin_dir> <mcp_script>
-
-Examples:
----------
-python mcp_pipe.py calculator.py
-python mcp_pipe.py ./calculator calculator.py
-python mcp_pipe.py weather/weather.py
 
 Environment Variables:
 ---------------------
