@@ -1,6 +1,6 @@
-# Xiaozhi-MCP-Plugins
+# xiaozhi-mcp-plugins
 
-Xiaozhi-MCP-Plugins 是为 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 项目开发的 MCP (Model Context Protocol) 插件集合。
+xiaozhi-mcp-plugins 是为 [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) 项目开发的 MCP (Model Context Protocol) 插件集合。
 
 ## Quick Start
 
