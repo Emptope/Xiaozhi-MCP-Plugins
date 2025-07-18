@@ -3,6 +3,7 @@ import sys
 from loguru import logger
 import requests
 import os
+import re
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -194,6 +195,168 @@ def reverse_geocode(longitude: float, latitude: float, radius: int = 1000) -> di
         })
     
     logger.info(f"Reverse geocoded {longitude},{latitude}: {regeocode.get('formatted_address')}")
+    return result
+
+@mcp.tool()
+def ip_location(ip: str = None) -> dict:
+    """
+    Get location information based on IP address (Basic IP Location).
+    
+    Args:
+        ip: IP address to locate (optional, uses client IP if not provided)
+    
+    Returns:
+        Dictionary containing IP location information
+    """
+    logger.info(f"IP location lookup: {ip or 'client IP'}")
+    
+    # Check API key
+    api_key = _get_api_key()
+    if not api_key:
+        return {"success": False, "error": "AMAP_API_KEY not configured"}
+    
+    # Validate IP address format if provided
+    if ip:
+        ip_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+        if not re.match(ip_pattern, ip):
+            return {"success": False, "error": "Invalid IP address format"}
+    
+    # Prepare request
+    url = "https://restapi.amap.com/v3/ip"
+    params = {
+        'key': api_key,
+        'output': 'json'
+    }
+    
+    if ip:
+        params['ip'] = ip
+    
+    # Make API request
+    data = _make_geocode_request(url, params)
+    if not data:
+        return {"success": False, "error": "Failed to fetch IP location data"}
+    
+    # Parse response
+    if data.get('status') != '1':
+        error_msg = data.get('info', 'Unknown API error')
+        logger.error(f"API error for IP {ip}: {error_msg}")
+        return {"success": False, "error": f"API error: {error_msg}"}
+    
+    # Extract IP location data
+    result = {
+        "success": True,
+        "type": "ip_location",
+        "ip": ip or "client_ip",
+        "country": data.get('country'),
+        "province": data.get('province'),
+        "city": data.get('city'),
+        "district": data.get('district'),
+        "isp": data.get('isp'),
+        "adcode": data.get('adcode')
+    }
+    
+    # Add coordinates if available
+    location = data.get('rectangle')
+    if location:
+        coords = location.split(';')
+        if len(coords) >= 2:
+            # Rectangle format: "lng1,lat1;lng2,lat2"
+            coord1 = coords[0].split(',')
+            coord2 = coords[1].split(',')
+            if len(coord1) == 2 and len(coord2) == 2:
+                # Calculate center point
+                center_lng = (float(coord1[0]) + float(coord2[0])) / 2
+                center_lat = (float(coord1[1]) + float(coord2[1])) / 2
+                result.update({
+                    "longitude": center_lng,
+                    "latitude": center_lat,
+                    "rectangle": location
+                })
+    
+    logger.info(f"IP location for {ip or 'client IP'}: {data.get('province')}, {data.get('city')}")
+    return result
+
+@mcp.tool()
+def advanced_ip_location(ip: str, location_type: int = 4) -> dict:
+    """
+    Get detailed location information based on IP address (Advanced IP Location).
+    
+    Args:
+        ip: IP address to locate (required)
+        location_type: Location precision type (1-4, default: 4)
+                      1: Country level
+                      2: Province level  
+                      3: City level
+                      4: District level (most precise)
+    
+    Returns:
+        Dictionary containing detailed IP location information
+    """
+    logger.info(f"Advanced IP location lookup: {ip}, type: {location_type}")
+    
+    # Check API key
+    api_key = _get_api_key()
+    if not api_key:
+        return {"success": False, "error": "AMAP_API_KEY not configured"}
+    
+    # Validate IP address format
+    ip_pattern = r'^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$'
+    if not re.match(ip_pattern, ip):
+        return {"success": False, "error": "Invalid IP address format"}
+    
+    # Validate location type
+    if location_type not in [1, 2, 3, 4]:
+        location_type = 4
+        logger.warning("Location type adjusted to 4 (valid range: 1-4)")
+    
+    # Prepare request
+    url = "https://restapi.amap.com/v5/ip/location"
+    params = {
+        'key': api_key,
+        'ip': ip,
+        'type': location_type
+    }
+    
+    # Make API request
+    data = _make_geocode_request(url, params)
+    if not data:
+        return {"success": False, "error": "Failed to fetch advanced IP location data"}
+    
+    # Parse response
+    if data.get('status') != '1':
+        error_msg = data.get('info', 'Unknown API error')
+        logger.error(f"Advanced API error for IP {ip}: {error_msg}")
+        return {"success": False, "error": f"API error: {error_msg}"}
+    
+    # Extract advanced IP location data
+    result = {
+        "success": True,
+        "type": "advanced_ip_location",
+        "ip": ip,
+        "location_type": location_type,
+        "country": data.get('country'),
+        "province": data.get('province'),
+        "city": data.get('city'),
+        "district": data.get('district'),
+        "isp": data.get('isp'),
+        "adcode": data.get('adcode')
+    }
+    
+    # Add precise coordinates if available
+    if 'location' in data:
+        location_coords = data['location'].split(',')
+        if len(location_coords) == 2:
+            result.update({
+                "longitude": float(location_coords[0]),
+                "latitude": float(location_coords[1]),
+                "location": data['location']
+            })
+    
+    # Add accuracy radius if available
+    if 'radius' in data:
+        result['accuracy_radius'] = data['radius']
+    
+    logger.info(f"Advanced IP location for {ip}: {data.get('province')}, {data.get('city')}")
     return result
 
 # Start server
